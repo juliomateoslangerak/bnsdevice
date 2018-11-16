@@ -27,9 +27,10 @@ As this is a timing critical device it might be important to implement it using 
 from cffi import FFI
 from imageio import imread
 import numpy as np
+import threading
 import os
 
-# TODO: We should ge tthis from the config or using the os tools
+# TODO: We should ge this from the config or using the os tools
 # We import the headers definitions used by cffi from a file in order to avoid copyright issues
 # Define a buffer of 1024 to hold the path of the LUTs
 PATHS_BUFFER_SIZE = 1024
@@ -54,7 +55,7 @@ TRUE_FRAMES = 5
 CLASS_NAME = "BNSDevice"  # TODO: See if we change the name
 
 
-class BNSDevice:
+class BNSDevice(threading.Thread):
     """
     This class represents the BNS device
     Important note: The header defs is a text file containing the headers from
@@ -92,7 +93,7 @@ class BNSDevice:
                  true_frames=TRUE_FRAMES):
 
         # Container for the handler
-        self.slm = None
+        self.slm_handle = None
 
         # Get the SDK library
         self.header_definitions = header_definitions
@@ -137,12 +138,16 @@ class BNSDevice:
         # Boolean showing initialization status.
         self.haveSLM = False  # TODO: see if we can replace by constructed_okay
 
+        # Boolean to control a running sequence
+        self._sequence_running = False
+
         # Boolean to control triggers use
         self.wait_for_trigger = self.ffi.cast("int", 0)
         self.trigger_timeout_ms = self.ffi.cast("unsigned int", trigger_timeout_ms)
         self.external_pulse = self.ffi.cast("int", 1)
 
-        # Container to get the errors
+        # Container to get the output of SDK function calls and errors
+        _r = self.ffi.new('int', 0)
         self.error = self.ffi.new('char[]', PATHS_BUFFER_SIZE)
 
         # Data type to store images.
@@ -202,7 +207,7 @@ class BNSDevice:
     @requires_slm
     def cleanup(self):
         try:
-            self.blink_sdk.Delete_SDK(self.slm)
+            self.blink_sdk.Delete_SDK(self.slm_handle)
         except:
             pass
         self.haveSLM = False
@@ -214,14 +219,14 @@ class BNSDevice:
 
         # Initialize the library, looking for nematic SLMs.
         try:
-            self.slm = self.blink_sdk.Create_SDK(self.bit_depth,
-                                                 self.num_boards_found,
-                                                 self.constructed_okay,
-                                                 self.is_nematic_type,
-                                                 self.RAM_write_enable,
-                                                 self.use_GPU,
-                                                 self.max_transients,
-                                                 self.default_static_regional_lut_file)
+            self.slm_handle = self.blink_sdk.Create_SDK(self.bit_depth,
+                                                        self.num_boards_found,
+                                                        self.constructed_okay,
+                                                        self.is_nematic_type,
+                                                        self.RAM_write_enable,
+                                                        self.use_GPU,
+                                                        self.max_transients,
+                                                        self.default_static_regional_lut_file)
             if self.num_boards_found[0] == 0:
                 raise Exception("No SLM device found.")
             elif self.num_boards_found[0] > 1:
@@ -245,25 +250,33 @@ class BNSDevice:
             """When using ODP the regional calibration is used to linearize the regional response
             of the LC to voltage. The global calibration, which is applied in hardware should be 
             disabled by loading a linear LUT to the hardware."""
-            self.blink_sdk.Load_linear_LUT(self.slm,
-                                           self.board)
-            self.blink_sdk.Load_overdrive_LUT_file(self.slm,
-                                                   self.default_static_regional_lut_file)
+            self._r = self.blink_sdk.Load_linear_LUT(self.slm_handle,
+                                                     self.board)
+            if not self._r:
+                raise Exception(self.get_last_error())
+
+            self._r = self.blink_sdk.Load_overdrive_LUT_file(self.slm_handle,
+                                                             self.default_static_regional_lut_file)
+            if not self._r:
+                raise Exception(self.get_last_error())
+
         else:
-            self.blink_sdk.Load_LUT_file(self.slm,
-                                         self.board,
-                                         self.default_static_regional_lut_file)
+            self._r = self.blink_sdk.Load_LUT_file(self.slm_handle,
+                                                   self.board,
+                                                   self.default_static_regional_lut_file)
+            if not self._r:
+                raise Exception(self.get_last_error())
 
         # Load a white image
         if self.use_odp:
-            self.blink_sdk.Write_overdrive_image(self.slm,
+            self.blink_sdk.Write_overdrive_image(self.slm_handle,
                                                  self.board,
                                                  self.ffi.from_buffer(self.cal_image),
                                                  self.wait_for_trigger,
                                                  self.external_pulse,
                                                  self.trigger_timeout_ms)
         else:
-            self.blink_sdk.Write_image(self.slm,
+            self.blink_sdk.Write_image(self.slm_handle,
                                        self.board,
                                        self.ffi.from_buffer(self.cal_image),
                                        self.image_size,
@@ -276,21 +289,21 @@ class BNSDevice:
         # We assume that the SLM has been initialized and that the linear LUT is already loaded on HW
         lut_file = self.ffi.new('char[]', os.path.join(luts_path, filename.encode()))
         if self.use_odp:
-            self.blink_sdk.Load_overdrive_LUT_file(self.slm,
+            self.blink_sdk.Load_overdrive_LUT_file(self.slm_handle,
                                                    lut_file)
         else:
-            self.blink_sdk.Load_LUT_file(self.slm,
+            self.blink_sdk.Load_LUT_file(self.slm_handle,
                                          self.board,
                                          lut_file)
 
     @requires_slm
     def compute_transients(self, image):
         byte_count = self.ffi.new('unsigned int*', 0)
-        self.blink_sdk.Calculate_transient_frames(self.slm,
+        self.blink_sdk.Calculate_transient_frames(self.slm_handle,
                                                   self.ffi.from_buffer(image),
                                                   byte_count)
         transients = self.ffi.new('unsigned char[]', byte_count)
-        self.blink_sdk.Retrieve_transient_frames(self.slm,
+        self.blink_sdk.Retrieve_transient_frames(self.slm_handle,
                                                  transients)
         return transients
 
@@ -300,7 +313,7 @@ class BNSDevice:
             raise Exception("load_sequence expects a list of two or more " \
                             "images - it was passed %s images." % len(image_list))
         # We pre-compute here the transient images
-        if self.blink_sdk.Is_slm_transient_constructed(self.slm) < 0:
+        if self.blink_sdk.Is_slm_transient_constructed(self.slm_handle) < 0:
             raise Exception('SLM transient calculation engine not properly constructed')
         # Empty the list of transient images
         self.transient_images = []
@@ -313,16 +326,34 @@ class BNSDevice:
     @requires_slm
     def start_sequence(self, external_trigger=True):
         self.wait_for_trigger = external_trigger
-        for transients in self.transient_images:
-            self.blink_sdk.Write_transient_frames(self.slm,
-                                                  self.board,
-                                                  transients,
-                                                  self.wait_for_trigger,
-                                                  self.external_pulse,
-                                                  self.trigger_timeout_ms)                                                 )
+        self._sequence_running = True
+        self.t = threading.Thread(target=self._run_sequence, args=self.transient_images)
+        self.t.start()
+
+    def _run_sequence(self, transients_images_list):
+        while self._sequence_running:
+            for transients in transients_images_list:
+                if self._sequence_running:
+                    self._r = self.blink_sdk.Write_transient_frames(self.slm_handle,
+                                                                    self.board,
+                                                                    transients,
+                                                                    self.wait_for_trigger,
+                                                                    self.external_pulse,
+                                                                    self.trigger_timeout_ms)
+                    if not self._r:
+                        print('Race condition')
+                        self._sequence_running = False
+                        return
+                else:
+                    return
+
+    @requires_slm
+    def stop_sequence(self):
+        self._sequence_running = False
+        self.blink_sdk.Stop_sequence(self.slm_handle)
+        self.t.join()
 
     def read_tiff(self, file_path):
-
         return imread(file_path.encode())
 
     @requires_slm
@@ -333,13 +364,13 @@ class BNSDevice:
     @requires_slm
     def set_true_frames(self, true_frames):
         self.true_frames = true_frames
-        self.blink_sdk.Set_true_frames(self.slm,
+        self.blink_sdk.Set_true_frames(self.slm_handle,
                                        self.true_frames)
 
 
     @requires_slm
     def get_last_error(self):
-        return self.ffi.string(self.blink_sdk.Get_last_error_message(self.slm))
+        return self.ffi.string(self.blink_sdk.Get_last_error_message(self.slm_handle))
 
 ############# Non ODP code####################
 # import os, sys
@@ -530,7 +561,6 @@ class BNSDevice:
     #     self.lib.SetTrueFrames(c_int(0), c_int(trueFrames))
     #
 
-    ------------
     # @requires_slm
     # def start_sequence(self):  # tested - works
     #     self.lib.StartSequence()

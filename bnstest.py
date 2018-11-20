@@ -88,7 +88,7 @@ sleep(5)
 # Run the TIFF-derived cycle for five seconds.
 print("TIFF series")
 dev.load_sequence(images)
-dev.start_sequence()
+dev.start_sequence(external_trigger=False)
 sleep(5)
 
 dev.stop_sequence()
@@ -100,7 +100,7 @@ dev.write_image(ndarray_images[0])
 # Run the numerically-generated series for five seconds
 print("ndarray series.")
 dev.load_sequence(ndarray_images)
-dev.start_sequence()
+dev.start_sequence(external_trigger=False)
 sleep(5)
 
 dev.stop_sequence()

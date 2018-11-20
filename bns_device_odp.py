@@ -25,7 +25,8 @@ As this is a timing critical device it might be important to implement it using 
 """
 
 from cffi import FFI
-from imageio import imread
+# from imageio import imread
+from scipy.misc import imread
 import numpy as np
 import threading
 import os
@@ -255,9 +256,9 @@ class BNSDevice(threading.Thread):
 
         # Load the default LUT
         if self.use_odp:
-            self.load_lut(self.default_overdrive_lut_file)
+            self.load_lut(os.path.join(self.luts_path, self.default_overdrive_lut_file))
         else:
-            self.load_lut(self.default_lut_file)
+            self.load_lut(os.path.join(self.luts_path, self.default_lut_file))
 
         # Load a white image
         self.write_image(self.cal_image)
@@ -267,7 +268,7 @@ class BNSDevice(threading.Thread):
         # We assume that the SLM has been initialized and that the linear LUT is already loaded on HW
         if type(filename) != bytes:
             filename = filename.encode()
-        lut_file = self.ffi.new('char[]', os.path.join(self.luts_path, filename))
+        lut_file = self.ffi.new('char[]', filename)
         if self.use_odp:
             """When using ODP the regional calibration is used to linearize the regional response
             of the LC to voltage. The global calibration, which is applied in hardware should be 
@@ -338,7 +339,7 @@ class BNSDevice(threading.Thread):
         self.blink_sdk.Calculate_transient_frames(self.slm_handle,
                                                   self.ffi.from_buffer(image),
                                                   byte_count)
-        transients = self.ffi.new('unsigned char[]', byte_count)
+        transients = self.ffi.new('unsigned char[]', byte_count[0])
         self.blink_sdk.Retrieve_transient_frames(self.slm_handle,
                                                  transients)
         return transients
@@ -364,12 +365,12 @@ class BNSDevice(threading.Thread):
     def start_sequence(self, external_trigger=True):
         self.wait_for_trigger = external_trigger
         self._sequence_running = True
-        self.t = threading.Thread(target=self._run_sequence, args=self.transient_images)
+        self.t = threading.Thread(target=self._run_sequence)
         self.t.start()
 
-    def _run_sequence(self, transients_images_list):
+    def _run_sequence(self):
         while self._sequence_running:
-            for transients in transients_images_list:
+            for transients in self.transient_images:
                 if self._sequence_running:
                     self._r = self.blink_sdk.Write_transient_frames(self.slm_handle,
                                                                     self.board,
@@ -395,7 +396,10 @@ class BNSDevice(threading.Thread):
         return np.multiply(array, coef).astype('uint8')
 
     def read_tiff(self, file_path):
-        return imread(file_path.encode())
+        if type(file_path) != bytes:
+            file_path = file_path.encode()
+
+        return imread(file_path)
 
     def set_external_trigger_timeout(self, timeout_ms):
         self.trigger_timeout_ms = timeout_ms

@@ -15,7 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import bnsdevice as bns
+import bns_device_odp as bns
 import numpy as np
 import ctypes
 import os

@@ -102,6 +102,7 @@ class BNSDevice(object):
     @requires_slm
     def power(self): #tested - works
         return self.lib.GetSLMPower(c_int(0))
+
     @power.setter
     @requires_slm
     def power(self, value): #tested - works

@@ -5,9 +5,9 @@ from numpy import rint, cos, sin, pi, meshgrid, arange
 from operator import itemgetter
 
 ## Read in the LUTS
-LUT_FILES = {405: 'slm7070_at405_P16.lut',
-             532: 'slm7070_at532_P16.lut',
-             635: 'slm7070_at635_P16.lut'}
+LUT_FILES = {473: 'slm4039_at473_P8.lut',
+             532: 'slm4039_at532_P8.lut',
+             635: 'slm4039_at635_P8.lut'}
 LUTS = {}
 for wl, f in LUT_FILES.iteritems():
     fh = open(os.path.join('LUT_files',f), 'r')

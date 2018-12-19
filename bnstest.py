@@ -54,7 +54,7 @@ def generate_stripe_series(patternparms):
 
 
 # Load a LUT.
-dev = bns.BNSDevice()
+dev = bns.BNSDevice_ODP()
 dev.initialize()
 print("Loadint LUT %s." % os.path.join(LUT_PATH, 'SLM_lut.txt'))
 dev.load_lut(os.path.join(LUT_PATH, 'SLM_lut.txt'))

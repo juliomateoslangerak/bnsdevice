@@ -15,7 +15,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-from bnsdevice import BNSDevice
+# from bns import BNSDevice
+from bns_device_odp import BNSDevice_ODP as BNSDevice
 from itertools import chain, product
 import logging
 import socket, threading
@@ -44,7 +45,7 @@ logging.basicConfig(level=logging.INFO,
 
 @Pyro4.expose
 class SpatialLightModulator(object):
-    def __init__(self):
+    def __init__(self, use_odp=False):
         # Logging
         loggerName = '.'.join([__name__, self.__class__.__name__])
         self.logger = logging.getLogger(loggerName)
@@ -74,7 +75,7 @@ class SpatialLightModulator(object):
         self.luts = {}
         self.calibs = {}
         # Load calib. data and LUT files
-        self.load_calibration_data()
+        # self.load_calibration_data()
         ## Connect to the hardware.
         self.hardware = BNSDevice()     
         ## Initialize the hardware.
@@ -105,9 +106,9 @@ class SpatialLightModulator(object):
                 wavelengths.append(wavelength)
 
         phases = [self.sim_phase_offset + n * TWO_PI / num_phases
-                    for n in xrange(num_phases)]
+                    for n in range(num_phases)]
         angles = [self.sim_angle_offset + n * TWO_PI / num_angles
-                    for n in xrange(num_angles)]
+                    for n in range(num_angles)]
 
         ## Calculate line pitches for each wavelength, once.
         # d  = m * wavelength / sin theta
@@ -115,7 +116,7 @@ class SpatialLightModulator(object):
         pitches = {w: w / (1000. * sin(self.sim_diffraction_angle * TWO_PI / 360.))
                      for w in wavelengths}
         ## Figure out the LUTs we need for each wavelength, once.
-        luts = {w: self.get_lut(w) for w in set(wavelengths)}
+        # luts = {w: self.get_lut(w) for w in set(wavelengths)}
 
         # retardation for equal powers in 0 and combined +/-1 orders
         modulation = 65535 * 150. / 360.0
@@ -133,7 +134,8 @@ class SpatialLightModulator(object):
                         / pp)
                     ))              
             # Lose two LSBs and pass through the LUT for given wavelength.
-            pattern = luts[wavelength][pattern16 / 4]
+            pattern = pattern16
+            # pattern = luts[wavelength][pattern16 / 4]
             # Append to the sequence.
             sequence.append(pattern)
         self.sequence_parameters = angle_phase_wavelength
@@ -166,7 +168,8 @@ class SpatialLightModulator(object):
         pattern = r'(slm)?(?P<serial>[0-9]+)[_](at(?P<wavelength>[0-9]+))'
 
         ## Find calibration files
-        path = os.path.join(modpath, self._calibrationFolder)
+        path = os.path.join(modpath, sel
+        f._calibrationFolder)
         if os.path.exists(path):
             files = os.listdir(path)
             matches = [re.match(pattern, f) for f in files]
@@ -250,9 +253,9 @@ class SpatialLightModulator(object):
         from PIL import Image, ImageDraw, ImageFont
         sequence = []
         labels = range(15)
-        lut = self.get_lut(550)
+        # lut = self.get_lut(550)
         imsize = self.pixels
-        font = ImageFont.truetype('arial.ttf', imsize[0]/2)
+        font = ImageFont.truetype('arial.ttf', imsize[0]//2)
         for c in labels:
             image = Image.new('L', imsize)
             draw = ImageDraw.Draw(image)
@@ -261,7 +264,8 @@ class SpatialLightModulator(object):
             pattern16 = numpy.array(image.getdata(), 
                                     dtype=numpy.ushort).reshape(imsize)
             pattern16 *= (65535 * 123.9 / 360) / pattern16.max()
-            pattern = lut[pattern16 / 4]
+            # pattern = lut[pattern16 / 4]
+            pattern = pattern16
             # Append to the sequence.
             sequence.append(pattern)
         self.sequence_parameters = map(lambda x: (x, 0, 0), labels)
@@ -366,6 +370,8 @@ class Server(object):
 
         host = config.get(CONFIG_NAME, 'ipAddress')
         port = config.getint(CONFIG_NAME, 'port')
+        # Reads if the SLM is using overdrive plus. It has to use another SDK
+        # use_odp = config.getint(CONFIG_NAME, 'use_odp')
 
         self.server = SpatialLightModulator()
 

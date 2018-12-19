@@ -38,6 +38,9 @@ PATHS_BUFFER_SIZE = 1024
 HEADER_DEFINITIONS = "C:\\Users\\omxt\\PycharmProjects\\bnsdevice\\Blink_SDK_C_wrapper_defs.h"
 BLINK_SDK_DLL_PATH = "Blink_SDK_C.dll"
 LUTS_PATH = b"C:\\Users\\omxt\\PycharmProjects\\bnsdevice\\LUT_files"
+LUTS = {473: b'slm4039_at473_regional_encrypt.txt',
+        532: b'slm4039_at532_regional_encrypt.txt',
+        635: b'slm4039_at635_regional_encrypt.txt'}
 DEFAULT_LUT_FILE = b"SLM_lut.txt"
 DEFAULT_OVERDRIVE_LUT_FILE = b'slm4039_at473_regional_encrypt.txt'
 PHASE_CALIBRATION_FILES = b"C:\\Users\\omxt\\PycharmProjects\\bnsdevice\\Phase_calibration_files"
@@ -52,6 +55,7 @@ MAX_TRANSIENTS = 20
 # Overdrive  SLMs  the  true  frames  parameter  should  be  set  to  5.
 # For non-overdrive  operation  true frames should be set to 3
 TRUE_FRAMES = 5
+
 
 CLASS_NAME = "BNSDevice_ODP"
 
@@ -80,6 +84,7 @@ class BNSDevice_ODP(threading.Thread):
                  header_definitions=HEADER_DEFINITIONS,
                  blink_sdk_dll_path=BLINK_SDK_DLL_PATH,
                  luts_path=LUTS_PATH,
+                 luts=LUTS,
                  default_lut_file=DEFAULT_LUT_FILE,
                  default_overdrive_lut_file=DEFAULT_OVERDRIVE_LUT_FILE,
                  phase_calibration_files=PHASE_CALIBRATION_FILES,
@@ -101,6 +106,7 @@ class BNSDevice_ODP(threading.Thread):
 
         # Path for the LUT files
         self.luts_path = luts_path
+        self.luts = luts
         self.default_overdrive_lut_file = default_overdrive_lut_file
         self.default_lut_file = default_lut_file
 
@@ -299,6 +305,15 @@ class BNSDevice_ODP(threading.Thread):
                                          self.board,
                                          lut_file)
 
+    def load_wavelength_lut(self, wavelength):
+        """Loads the LUT to the SLM that fits the best for a specified wavelength"""
+        # Load the default LUT
+        lut_wavelengths = self.luts.keys()
+        nearest = min(lut_wavelengths, key=lambda x: abs(x - wavelength))
+        lut_file = os.path.join(self.luts_path, self.luts[nearest])
+        self.load_lut(lut_file)
+        return None
+
     def write_cal(self, type, calImage):
         """A pass through for old SDK compatibility"""
         return self.write_image(calImage)
@@ -347,21 +362,34 @@ class BNSDevice_ODP(threading.Thread):
         return transients
 
     @requires_slm
-    def load_sequence(self, image_list):
-        if len(image_list) < 2:
+    def load_sequence(self, image_wavelength_list):
+        if len(image_wavelength_list) < 2:
             raise Exception("load_sequence expects a list of two or more " \
-                            "images - it was passed %s images." % len(image_list))
+                            "images - it was passed %s images." % len(image_wavelength_list))
         # We pre-compute here the transient images
+        # Verify that the calculation engine is properly loaded
         if self.blink_sdk.Is_slm_transient_constructed(self.slm_handle) < 0:
             raise Exception('SLM transient calculation engine not properly constructed')
         # Empty the list of transient images
         self.transient_images = []
-        for image in image_list:
-            if type(image) is np.ndarray:
-                image = self.transform_16_to_8_bit(image)
-                self.transient_images.append(self.compute_transients(image))
-            else:
-                raise Exception('Sequence of images is not in teh right format')
+        current_wavelength = None
+        if self.use_odp:
+            for image, wavelength in image_wavelength_list:
+                if wavelength != current_wavelength:
+                    self.load_wavelength_lut(wavelength)
+                    current_wavelength = wavelength
+                if type(image) is np.ndarray:
+                    image = self.transform_16_to_8_bit(image)
+                    self.transient_images.append(self.compute_transients(image))
+                else:
+                    raise Exception('Sequence of images is not in teh right format')
+        else:
+            for image in image_wavelength_list:  # In this case it is only an images list
+                if type(image) is np.ndarray:
+                    image = self.transform_16_to_8_bit(image)
+                    self.transient_images.append(self.compute_transients(image))
+                else:
+                    raise Exception('Sequence of images is not in teh right format')
 
     @requires_slm
     def start_sequence(self, external_trigger=True):
@@ -383,7 +411,7 @@ class BNSDevice_ODP(threading.Thread):
                                                                         self.wait_for_trigger,
                                                                         self.external_pulse,
                                                                         self.trigger_timeout_ms)
-                        print(self._sequence_index)
+                        # print(self._sequence_index)
                         self._sequence_index += 1
                         if int(self._r):
                             print(self.get_last_error())

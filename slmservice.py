@@ -45,7 +45,7 @@ logging.basicConfig(level=logging.INFO,
 
 @Pyro4.expose
 class SpatialLightModulator(object):
-    def __init__(self, use_odp=False):
+    def __init__(self, use_odp=True):
         # Logging
         loggerName = '.'.join([__name__, self.__class__.__name__])
         self.logger = logging.getLogger(loggerName)
@@ -62,6 +62,7 @@ class SpatialLightModulator(object):
         self.sequence = []
         self.sequence_parameters = []
         ## SIM parameters
+        self.use_ODP = use_odp
         self.sim_phase_offset = 0
         self.sim_angle_offset = TWO_PI / 5.
         self.sim_num_phases = 5
@@ -75,7 +76,7 @@ class SpatialLightModulator(object):
         self.luts = {}
         self.calibs = {}
         # Load calib. data and LUT files
-        # self.load_calibration_data()
+        self.load_calibration_data()
         ## Connect to the hardware.
         self.hardware = BNSDevice()     
         ## Initialize the hardware.
@@ -134,10 +135,13 @@ class SpatialLightModulator(object):
                         / pp)
                     ))              
             # Lose two LSBs and pass through the LUT for given wavelength.
-            pattern = pattern16
-            # pattern = luts[wavelength][pattern16 / 4]
-            # Append to the sequence.
-            sequence.append(pattern)
+            # Append to the sequence. If use_odp we must load together with the images the wavelength as computing
+            # the transients needs that info
+            if self.use_ODP:
+                sequence.append((pattern16, wavelength))
+            else:
+                pattern = luts[wavelength][pattern16 / 4]
+                sequence.append(pattern)
         self.sequence_parameters = angle_phase_wavelength
         self.sequence = sequence
         self.load_sequence()
@@ -165,11 +169,10 @@ class SpatialLightModulator(object):
         # module path
         modpath = os.path.dirname(__file__)
         # filename format
-        pattern = r'(slm)?(?P<serial>[0-9]+)[_](at(?P<wavelength>[0-9]+))'
+        pattern = r'(slm)?(?P<serial>[0-9]+)[_](at(?P<wavelength>[0-9]+)_P)'
 
         ## Find calibration files
-        path = os.path.join(modpath, sel
-        f._calibrationFolder)
+        path = os.path.join(modpath, self._calibrationFolder)
         if os.path.exists(path):
             files = os.listdir(path)
             matches = [re.match(pattern, f) for f in files]
@@ -248,7 +251,7 @@ class SpatialLightModulator(object):
         return None
 
 
-    def set_test_sequence(self):
+    def set_test_sequence(self, wavelength=488):
         """ Generate a series of test images. """
         from PIL import Image, ImageDraw, ImageFont
         sequence = []
@@ -267,7 +270,10 @@ class SpatialLightModulator(object):
             # pattern = lut[pattern16 / 4]
             pattern = pattern16
             # Append to the sequence.
-            sequence.append(pattern)
+            if self.use_ODP:
+                sequence.append((pattern, wavelength))
+            else:
+                sequence.append(pattern)
         self.sequence_parameters = map(lambda x: (x, 0, 0), labels)
         self.sequence = sequence
         self.load_sequence()

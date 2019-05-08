@@ -97,6 +97,7 @@ class SpatialLightModulator(object):
         angle_phase_wavelength is a list where each element is a tuple of the 
         form (angle_number, phase_number, wavelength).
         """
+        print('calling set_sim_sequence with: ', angle_phase_wavelength)
         num_phases = 0
         num_angles = 0
         wavelengths = []
@@ -145,6 +146,7 @@ class SpatialLightModulator(object):
         self.sequence_parameters = angle_phase_wavelength
         self.sequence = sequence
         self.load_sequence()
+        print('set_sequnece_done')
 
 
     def dump_sequence(self):
@@ -293,6 +295,7 @@ class SpatialLightModulator(object):
         Patterns should be arrays of 16-bit unsigned integers; they will be
         reshaped to the device size, which can be queried with get_shape().
         """
+        print('calling set_custom_sequence with: ', wavelengths, patterns)
         if type(wavelengths) in [list, tuple]:
             assert len(wavelengths) == len(patterns), \
                 "len(wavelengths) != len(patterns)."
@@ -332,11 +335,11 @@ class SpatialLightModulator(object):
 
 
     def get_is_enabled(self):
-        return self.hardware.power
+        return int(self.hardware.power)
 
 
     def get_power(self):
-        return self.hardware.power
+        return int(self.hardware.power)
 
 
     def get_sequence_index(self):

@@ -156,7 +156,7 @@ class BNSDevice_ODP(threading.Thread):
 
         # Boolean to control a running sequence and a holder for a thread
         self._sequence_running = False
-        self._sequence_index = 1
+        self._sequence_index = 0
         self.t = None
 
         # Boolean to control triggers use
@@ -375,9 +375,9 @@ class BNSDevice_ODP(threading.Thread):
         current_wavelength = None
         if self.use_odp:
             for image, wavelength in image_wavelength_list:
-                if wavelength != current_wavelength:
-                    self.load_wavelength_lut(wavelength)
-                    current_wavelength = wavelength
+                # if wavelength != current_wavelength:
+                #     self.load_wavelength_lut(wavelength)
+                #     current_wavelength = wavelength
                 if type(image) is np.ndarray:
                     image = self.transform_16_to_8_bit(image)
                     self.transient_images.append(self.compute_transients(image))
@@ -393,8 +393,11 @@ class BNSDevice_ODP(threading.Thread):
 
     @requires_slm
     def start_sequence(self, external_trigger=True):
+        """Sequence wil restart if already running"""
         print('Starting sequence')
         self.wait_for_trigger = external_trigger
+        if self._sequence_running:
+            self.stop_sequence
         self._sequence_running = True
         self.t = threading.Thread(target=self._run_sequence)
         self.t.start()
@@ -402,7 +405,7 @@ class BNSDevice_ODP(threading.Thread):
     def _run_sequence(self):
         while self._sequence_running:
             if self.transient_images:
-                self._sequence_index = 1
+                self._sequence_index = 0
                 for transients in self.transient_images:
                     if self._sequence_running:
                         self._r = self.blink_sdk.Write_transient_frames(self.slm_handle,
@@ -411,7 +414,7 @@ class BNSDevice_ODP(threading.Thread):
                                                                         self.wait_for_trigger,
                                                                         self.external_pulse,
                                                                         self.trigger_timeout_ms)
-                        # print(self._sequence_index)
+                        print(self._sequence_index)
                         self._sequence_index += 1
                         if int(self._r):
                             print(self.get_last_error())
@@ -425,6 +428,7 @@ class BNSDevice_ODP(threading.Thread):
         self._sequence_running = False
         self.blink_sdk.Stop_sequence(self.slm_handle)
         self.t.join()
+        print('sequence stopped')
 
     def transform_16_to_8_bit(self, array):
         coef = np.array([np.iinfo('uint8').max / np.iinfo('uint16').max])

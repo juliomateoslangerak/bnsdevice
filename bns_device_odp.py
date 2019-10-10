@@ -319,12 +319,15 @@ class BNSDevice_ODP(threading.Thread):
         return self.write_image(calImage)
 
     @requires_slm
-    def write_image(self, image, external_trigger=False):
+    def write_image(self, image, wavelength=None, external_trigger=False):
         # This function loads an image to the SLM
         if self._sequence_running:
             raise Exception('Sequence is running. Cannot write single image')
 
         self.wait_for_trigger = external_trigger
+
+        if wavelength:
+            self.load_wavelength_lut(wavelength)
 
         image = self.transform_16_to_8_bit(image)
 

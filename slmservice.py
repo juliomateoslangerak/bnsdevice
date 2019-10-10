@@ -121,7 +121,7 @@ class SpatialLightModulator(object):
         # luts = {w: self.get_lut(w) for w in set(wavelengths)}
 
         # retardation for equal powers in 0 and combined +/-1 orders
-        modulation = 65535 * 150. / 360.0
+        modulation = 65535 * 190. / 360.0
 
         sequence = []
         for (angle, phase, wavelength) in angle_phase_wavelength:
@@ -326,7 +326,7 @@ class SpatialLightModulator(object):
     def stop(self):
         """ Power off and stop device responding to triggers. """
         self.hardware.stop_sequence()
-        self.hardware.power = False
+        self.hardware.power = 0
         return None
 
 
@@ -359,7 +359,7 @@ class SpatialLightModulator(object):
 
     def single_frame(self, index):
         self.hardware.stop_sequence()
-        self.hardware.write_image(self.sequence[index])
+        self.hardware.write_image(image=self.sequence[index][0], wavelength=self.sequence[index][1])
 
 
 class Server(object):

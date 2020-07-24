@@ -408,9 +408,9 @@ class BNSDevice_ODP(threading.Thread):
     def _run_sequence(self):
         while self._sequence_running:
             if self.transient_images:
-                self._sequence_index = 0
-                for transients in self.transient_images:
+                for i, transients in enumerate(self.transient_images):
                     if self._sequence_running:
+                        self._sequence_index = i
                         self._r = self.blink_sdk.Write_transient_frames(self.slm_handle,
                                                                         self.board,
                                                                         transients,
@@ -418,7 +418,6 @@ class BNSDevice_ODP(threading.Thread):
                                                                         self.external_pulse,
                                                                         self.trigger_timeout_ms)
                         print(self._sequence_index)
-                        self._sequence_index += 1
                         if int(self._r):
                             print(self.get_last_error())
                             self._sequence_running = False
